@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace RetroShelf;
+namespace RetroShelf.Models;
 
 public sealed class GameEntry
 {
@@ -15,6 +15,15 @@ public sealed class GameEntry
     public long TotalPlayTimeSeconds { get; set; }
     public bool IsFavorite { get; set; }
     public string LaunchArguments { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public CompatibilityInfo? Compatibility { get; set; }
+
+    [JsonIgnore]
+    public bool HasCompatibility => Compatibility is not null;
+
+    [JsonIgnore]
+    public string CompatibilityBadge => Compatibility?.CompatibilityScore is int score ? $"{score}%" : "Unknown";
 
     [JsonIgnore]
     public string LastPlayedDisplay => LastPlayedAt?.LocalDateTime.ToString("g") ?? "Never";

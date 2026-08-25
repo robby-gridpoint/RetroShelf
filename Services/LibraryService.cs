@@ -1,8 +1,9 @@
 using System.IO;
 using System.IO.Compression;
 using System.Text.Json;
+using RetroShelf.Models;
 
-namespace RetroShelf;
+namespace RetroShelf.Services;
 
 public sealed class LibraryService
 {

@@ -1,0 +1,52 @@
+﻿<Window x:Class="RetroShelf.Views.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="About RetroShelf"
+        Width="420" Height="290"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="#F4F4F4"
+        FontFamily="Segoe UI"
+        FontSize="12">
+    <Window.Resources>
+        <SolidColorBrush x:Key="TextPrimary" Color="#202020" />
+        <SolidColorBrush x:Key="TextSecondary" Color="#666666" />
+    </Window.Resources>
+
+    <Grid Margin="24,20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="RetroShelf" FontSize="20" FontWeight="SemiBold"
+                   Foreground="{StaticResource TextPrimary}" />
+
+        <TextBlock x:Name="VersionText" Grid.Row="1" Margin="0,3,0,0"
+                   Foreground="{StaticResource TextSecondary}" />
+
+        <TextBlock Grid.Row="2" Margin="0,18,0,0" TextWrapping="Wrap" LineHeight="19"
+                   Foreground="{StaticResource TextPrimary}"
+                   Text="A lightweight launcher and library manager for XBLIG/FNA ports and other ready-to-run zipped games." />
+
+        <TextBlock Grid.Row="3" Margin="0,16,0,0">
+            <Hyperlink NavigateUri="https://github.com/robby-gridpoint/RetroShelf"
+                       RequestNavigate="Link_RequestNavigate">
+                github.com/robby-gridpoint/RetroShelf
+            </Hyperlink>
+        </TextBlock>
+
+        <TextBlock Grid.Row="4" Margin="0,12,0,0" Foreground="{StaticResource TextSecondary}">
+            Library data: %LocalAppData%\RetroShelf
+        </TextBlock>
+
+        <Button Grid.Row="6" Content="Close" Width="80" Height="26" HorizontalAlignment="Right"
+                IsDefault="True" IsCancel="True" Click="CloseButton_Click" />
+    </Grid>
+</Window>

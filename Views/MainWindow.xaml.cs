@@ -2,25 +2,48 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Data;
 using Microsoft.Win32;
+using RetroShelf.Models;
+using RetroShelf.Services;
+using DataFormats = System.Windows.DataFormats;
+using DragDropEffects = System.Windows.DragDropEffects;
+using DragEventArgs = System.Windows.DragEventArgs;
+using IDataObject = System.Windows.IDataObject;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using MessageBox = System.Windows.MessageBox;
+using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 
-namespace RetroShelf;
+namespace RetroShelf.Views;
 
 public partial class MainWindow : Window
 {
     private readonly LibraryService libraryService = new();
+    private readonly CompatibilityService compatibilityService = new();
+    private readonly AppSettingsService settingsService = new();
+    private readonly TrayIconService trayIconService = new();
+    private readonly AppSettings appSettings;
     private readonly ObservableCollection<GameEntry> games;
     private readonly ICollectionView gamesView;
+    private IReadOnlyDictionary<string, CompatibilityInfo> compatibilityEntries =
+        new Dictionary<string, CompatibilityInfo>(StringComparer.OrdinalIgnoreCase);
     private CancellationTokenSource? installCancellation;
+    private bool isRefreshingCompatibility;
     private bool isUpdatingDetails;
     private bool closeAfterInstall;
+    private bool isGameSessionActive;
 
     public MainWindow()
     {
         InitializeComponent();
+
+        appSettings = settingsService.Load();
+        ShowPostLaunchSummariesMenuItem.IsChecked = appSettings.ShowPostLaunchSummaries;
+        trayIconService.RestoreRequested += TrayIconService_RestoreRequested;
 
         games = new ObservableCollection<GameEntry>(libraryService.Load());
         gamesView = CollectionViewSource.GetDefaultView(games);
@@ -35,15 +58,90 @@ public partial class MainWindow : Window
 
     private GameEntry? SelectedGame => GameList.SelectedItem as GameEntry;
 
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        await RefreshCompatibilityAsync();
+    }
+
+    private async void RefreshCompatibility_Click(object sender, RoutedEventArgs e)
+    {
+        await RefreshCompatibilityAsync();
+    }
+
+    private async Task RefreshCompatibilityAsync()
+    {
+        if (isRefreshingCompatibility)
+        {
+            return;
+        }
+
+        isRefreshingCompatibility = true;
+        StatusText.Text = "Checking compatibility...";
+
+        try
+        {
+            compatibilityEntries = await compatibilityService.LoadAsync();
+            int matchCount = 0;
+            foreach (GameEntry game in games)
+            {
+                ApplyCompatibility(game);
+                if (game.HasCompatibility)
+                {
+                    matchCount++;
+                }
+            }
+
+            StatusText.Text = matchCount == 1
+                ? "Compatibility updated: 1 game matched"
+                : $"Compatibility updated: {matchCount} games matched";
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or IOException or TaskCanceledException)
+        {
+            compatibilityEntries = new Dictionary<string, CompatibilityInfo>(StringComparer.OrdinalIgnoreCase);
+            foreach (GameEntry game in games)
+            {
+                game.Compatibility = null;
+            }
+
+            StatusText.Text = "Compatibility feed unavailable; games marked Unknown";
+        }
+        finally
+        {
+            isRefreshingCompatibility = false;
+            gamesView.Refresh();
+            ShowSelectedGame();
+        }
+    }
+
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
         Close();
     }
 
+    private void AboutButton_Click(object sender, RoutedEventArgs e)
+    {
+        AboutWindow dialog = new() { Owner = this };
+        dialog.ShowDialog();
+    }
+
+    private void ShowPostLaunchSummaries_Click(object sender, RoutedEventArgs e)
+    {
+        appSettings.ShowPostLaunchSummaries = ShowPostLaunchSummariesMenuItem.IsChecked;
+        settingsService.Save(appSettings);
+    }
+
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
+        if (isGameSessionActive)
+        {
+            e.Cancel = true;
+            MinimizeToTray();
+            return;
+        }
+
         if (installCancellation is null)
         {
+            trayIconService.Dispose();
             return;
         }
 
@@ -107,6 +205,7 @@ public partial class MainWindow : Window
         try
         {
             GameEntry game = await libraryService.InstallAsync(archivePath, progress, currentCancellation.Token);
+            ApplyCompatibility(game);
             games.Add(game);
             SaveLibrary();
             gamesView.Refresh();
@@ -165,6 +264,13 @@ public partial class MainWindow : Window
 
     private void PlayButton_Click(object sender, RoutedEventArgs e)
     {
+        if (isGameSessionActive)
+        {
+            MessageBox.Show(this, "A game session is already running.", "Game running",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
         GameEntry? game = SelectedGame;
         if (game is null)
         {
@@ -197,6 +303,8 @@ public partial class MainWindow : Window
             TrackGameSession(process, game, sessionStartedAt);
             InstallDateText.Text = GetGameSubheading(game);
             StatusText.Text = $"Launched {game.Name}";
+            isGameSessionActive = true;
+            MinimizeToTray();
         }
         catch (Exception exception) when (exception is Win32Exception or InvalidOperationException)
         {
@@ -232,6 +340,7 @@ public partial class MainWindow : Window
                     UpdatePlayStats(game);
                 }
                 RefreshSelectedGame(game);
+                CompleteGameSession(game, TimeSpan.FromSeconds(elapsedSeconds));
             });
         }
 
@@ -240,6 +349,55 @@ public partial class MainWindow : Window
         if (process.HasExited)
         {
             CompleteSession();
+        }
+    }
+
+    private void MinimizeToTray()
+    {
+        trayIconService.Show();
+        WindowState = WindowState.Minimized;
+        Hide();
+    }
+
+    private void RestoreFromTray()
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        Activate();
+    }
+
+    private void TrayIconService_RestoreRequested(object? sender, EventArgs e)
+    {
+        _ = Dispatcher.InvokeAsync(RestoreFromTray);
+    }
+
+    private void CompleteGameSession(GameEntry game, TimeSpan sessionDuration)
+    {
+        isGameSessionActive = false;
+        trayIconService.Hide();
+        RestoreFromTray();
+        StatusText.Text = $"{game.Name} closed after {FormatPlayTime((long)sessionDuration.TotalSeconds)}";
+
+        if (!appSettings.ShowPostLaunchSummaries)
+        {
+            return;
+        }
+
+        PostLaunchSummaryWindow summary = new(
+            game.Name,
+            sessionDuration,
+            TimeSpan.FromSeconds(game.TotalPlayTimeSeconds),
+            game.PlayCount)
+        {
+            Owner = this
+        };
+        summary.ShowDialog();
+
+        if (!summary.ShowFutureSummaries)
+        {
+            appSettings.ShowPostLaunchSummaries = false;
+            ShowPostLaunchSummariesMenuItem.IsChecked = false;
+            settingsService.Save(appSettings);
         }
     }
 
@@ -290,8 +448,11 @@ public partial class MainWindow : Window
         }
 
         game.ExecutablePath = selectedPath;
+        ApplyCompatibility(game);
         ExecutableBox.Text = selectedPath;
         SaveLibrary();
+        gamesView.Refresh();
+        UpdateCompatibilityDetails(game);
     }
 
     private void UninstallButton_Click(object sender, RoutedEventArgs e)
@@ -358,6 +519,7 @@ public partial class MainWindow : Window
         FavoriteCheckBox.IsChecked = game.IsFavorite;
         ArgumentsBox.Text = game.LaunchArguments;
         ExecutableBox.Text = game.ExecutablePath;
+        UpdateCompatibilityDetails(game);
         isUpdatingDetails = false;
     }
 
@@ -485,6 +647,40 @@ public partial class MainWindow : Window
         return game.LastPlayedAt is { } lastPlayed
             ? $"Last played {lastPlayed.LocalDateTime:g}"
             : $"Installed {game.InstalledAt.LocalDateTime:d}";
+    }
+
+    private void ApplyCompatibility(GameEntry game)
+    {
+        string executableName = Path.GetFileName(game.ExecutablePath);
+        game.Compatibility = compatibilityEntries.TryGetValue(executableName, out CompatibilityInfo? compatibility)
+            ? compatibility
+            : null;
+    }
+
+    private void UpdateCompatibilityDetails(GameEntry game)
+    {
+        CompatibilityInfo? compatibility = game.Compatibility;
+        const string unknown = "Unknown / Not tested";
+
+        CompatibilityScoreText.Text = compatibility?.CompatibilityScore is int score ? $"{score}%" : unknown;
+        CompatibilityRunnableText.Text = FormatCompatibilityFlag(compatibility?.Runnable, unknown);
+        CompatibilityCompilableText.Text = FormatCompatibilityFlag(compatibility?.Compilable, unknown);
+        CompatibilityVersionText.Text = string.IsNullOrWhiteSpace(compatibility?.Version)
+            ? unknown
+            : compatibility.Version;
+        CompatibilityNotesText.Text = string.IsNullOrWhiteSpace(compatibility?.CompatibilityNotes)
+            ? unknown
+            : compatibility.CompatibilityNotes;
+    }
+
+    private static string FormatCompatibilityFlag(bool? value, string unknown)
+    {
+        return value switch
+        {
+            true => "Yes",
+            false => "No",
+            null => unknown
+        };
     }
 
     private void UpdatePlayStats(GameEntry game)
