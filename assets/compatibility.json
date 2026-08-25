@@ -2,6 +2,8 @@
   "FlappyMonkey": {
     "runnable": true,
     "compilable": true,
+    "compatibility_score": 70,
+    "compatibility_notes": "Controller Only", 
     "version": "net10.0",
     "executable_name": "FlappyMonkey.exe"
   }
