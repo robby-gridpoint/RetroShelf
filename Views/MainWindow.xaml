@@ -264,19 +264,16 @@
                         </StackPanel>
                     </Grid>
 
-                    <ScrollViewer x:Name="DetailPanel" Visibility="Collapsed"
-                                  VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled">
-                        <Grid Margin="18">
-                            <Grid.RowDefinitions>
+                    <Grid x:Name="DetailPanel" Visibility="Collapsed" Margin="18">
+                        <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
                             <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
+                        </Grid.RowDefinitions>
 
                         <TextBox x:Name="GameNameBox" FontSize="17" FontWeight="SemiBold"
                                  Background="Transparent" BorderThickness="0,0,0,1" Padding="0,0,0,5"
@@ -317,6 +314,9 @@
                                 Padding="0,12,0,10" Margin="0,12,0,0" VerticalAlignment="Top">
                             <StackPanel>
                                 <TextBlock Text="Compatibility" FontWeight="SemiBold" Margin="0,0,0,7" />
+                                <TextBlock Text="Notes" Style="{StaticResource FieldLabel}" />
+                                <TextBlock x:Name="CompatibilityNotesText" TextWrapping="Wrap"
+                                           Margin="0,0,0,10" />
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="90" />
@@ -337,20 +337,16 @@
                                     <TextBlock Grid.Row="3" Text="Version" Style="{StaticResource FieldLabel}" />
                                     <TextBlock x:Name="CompatibilityVersionText" Grid.Row="3" Grid.Column="1" />
                                 </Grid>
-                                <TextBlock Text="Compatibility notes" Style="{StaticResource FieldLabel}"
-                                           Margin="0,10,0,4" />
-                                <TextBlock x:Name="CompatibilityNotesText" TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
 
-                            <StackPanel Grid.Row="6">
-                                <Button Click="PlayButton_Click" Content="Play" Style="{StaticResource PrimaryButton}"
-                                        Margin="0,0,0,7" />
-                                <Button Click="RevealButton_Click" Content="Open Install Folder" Margin="0,0,0,7" />
-                                <Button Click="UninstallButton_Click" Content="Uninstall" Foreground="#A02020" />
-                            </StackPanel>
-                        </Grid>
-                    </ScrollViewer>
+                        <StackPanel Grid.Row="6">
+                            <Button Click="PlayButton_Click" Content="Play" Style="{StaticResource PrimaryButton}"
+                                    Margin="0,0,0,7" />
+                            <Button Click="RevealButton_Click" Content="Open Install Folder" Margin="0,0,0,7" />
+                            <Button Click="UninstallButton_Click" Content="Uninstall" Foreground="#A02020" />
+                        </StackPanel>
+                    </Grid>
                 </Grid>
             </Border>
         </Grid>
