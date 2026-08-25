@@ -1,0 +1,8 @@
+{
+  "FlappyMonkey": {
+    "runnable": true,
+    "compilable": true,
+    "version": "net10.0",
+    "executable_name": "FlappyMonkey.exe"
+  }
+}
