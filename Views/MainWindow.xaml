@@ -203,7 +203,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="230" />
                 </Grid.ColumnDefinitions>
-                <Button Click="InstallButton_Click" Content="Install ZIP..." Margin="0,0,6,0" />
+                <Button Click="InstallButton_Click" Content="Install Archive..." Margin="0,0,6,0" />
                 <Button Grid.Column="1" Click="PlayButton_Click" Content="Play Selected"
                         Style="{StaticResource PrimaryButton}" />
                 <TextBlock Grid.Column="3" Text="Search:" VerticalAlignment="Center" Margin="0,0,7,0" />

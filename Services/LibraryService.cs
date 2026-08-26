@@ -2,6 +2,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Text.Json;
 using RetroShelf.Models;
+using SharpCompress.Archives.SevenZip;
 
 namespace RetroShelf.Services;
 
@@ -9,6 +10,7 @@ public sealed class LibraryService
 {
     private const long MaximumExpandedSize = 10L * 1024 * 1024 * 1024;
     private const int MaximumEntryCount = 100_000;
+    private static readonly string[] SupportedArchiveExtensions = [".zip", ".7z"];
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     private readonly string libraryPath;
@@ -79,12 +81,13 @@ public sealed class LibraryService
 
         if (!File.Exists(archivePath))
         {
-            throw new FileNotFoundException("The selected ZIP could not be found.", archivePath);
+            throw new FileNotFoundException("The selected archive could not be found.", archivePath);
         }
 
-        if (!string.Equals(Path.GetExtension(archivePath), ".zip", StringComparison.OrdinalIgnoreCase))
+        string archiveExtension = Path.GetExtension(archivePath);
+        if (!SupportedArchiveExtensions.Contains(archiveExtension, StringComparer.OrdinalIgnoreCase))
         {
-            throw new InvalidDataException("RetroShelf currently installs ZIP archives only.");
+            throw new InvalidDataException("RetroShelf installs ZIP and 7z archives only.");
         }
 
         Directory.CreateDirectory(stagingDirectory);
@@ -102,7 +105,7 @@ public sealed class LibraryService
             progress?.Report(new InstallProgress("Finding game executable", string.Empty, 94));
 
             string executable = FindExecutable(temporaryDirectory, gameName)
-                ?? throw new InvalidDataException("The ZIP does not contain a Windows executable.");
+                ?? throw new InvalidDataException("The archive does not contain a Windows executable.");
 
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new InstallProgress("Finalizing installation", string.Empty, 98));
@@ -133,6 +136,21 @@ public sealed class LibraryService
     }
 
     private static void ExtractArchive(
+        string archivePath,
+        string destinationDirectory,
+        IProgress<InstallProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(Path.GetExtension(archivePath), ".7z", StringComparison.OrdinalIgnoreCase))
+        {
+            ExtractSevenZipArchive(archivePath, destinationDirectory, progress, cancellationToken);
+            return;
+        }
+
+        ExtractZipArchive(archivePath, destinationDirectory, progress, cancellationToken);
+    }
+
+    private static void ExtractZipArchive(
         string archivePath,
         string destinationDirectory,
         IProgress<InstallProgress>? progress,
@@ -206,6 +224,87 @@ public sealed class LibraryService
 
                 lastReportedPercentage = percentage;
                 progress?.Report(new InstallProgress("Extracting files", entry.FullName, percentage));
+            }
+        }
+
+        progress?.Report(new InstallProgress("Verifying installation", string.Empty, 92));
+    }
+
+    private static void ExtractSevenZipArchive(
+        string archivePath,
+        string destinationDirectory,
+        IProgress<InstallProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(destinationDirectory);
+        string destinationRoot = Path.GetFullPath(destinationDirectory) + Path.DirectorySeparatorChar;
+
+        using var archive = SevenZipArchive.OpenArchive(archivePath);
+        var entries = archive.Entries.ToArray();
+        if (entries.Length > MaximumEntryCount)
+        {
+            throw new InvalidDataException("The 7z archive contains too many files.");
+        }
+
+        long totalSize = 0;
+        foreach (var entry in entries)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            totalSize = checked(totalSize + entry.Size);
+            if (totalSize > MaximumExpandedSize)
+            {
+                throw new InvalidDataException("The 7z archive expands beyond the 10 GB install limit.");
+            }
+
+            string outputPath = Path.GetFullPath(Path.Combine(destinationDirectory, entry.Key));
+            if (!outputPath.StartsWith(destinationRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException("The 7z archive contains an unsafe file path.");
+            }
+        }
+
+        long extractedSize = 0;
+        int lastReportedPercentage = -1;
+        byte[] buffer = new byte[128 * 1024];
+
+        foreach (var entry in entries)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string outputPath = Path.GetFullPath(Path.Combine(destinationDirectory, entry.Key));
+
+            if (entry.IsDirectory)
+            {
+                Directory.CreateDirectory(outputPath);
+                continue;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+            using Stream input = entry.OpenEntryStream();
+            using FileStream output = new(
+                outputPath,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                buffer.Length,
+                FileOptions.SequentialScan);
+
+            int bytesRead;
+            while ((bytesRead = input.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                output.Write(buffer, 0, bytesRead);
+                extractedSize += bytesRead;
+
+                int percentage = totalSize == 0
+                    ? 92
+                    : 5 + (int)Math.Round((double)extractedSize / totalSize * 87);
+                if (percentage == lastReportedPercentage)
+                {
+                    continue;
+                }
+
+                lastReportedPercentage = percentage;
+                progress?.Report(new InstallProgress("Extracting files", entry.Key, percentage));
             }
         }
 

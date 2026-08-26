@@ -155,7 +155,7 @@ public partial class MainWindow : Window
         OpenFileDialog dialog = new()
         {
             Title = "Install an XBLIG or indie game",
-            Filter = "ZIP archives (*.zip)|*.zip",
+            Filter = "Game archives (*.zip;*.7z)|*.zip;*.7z|ZIP archives (*.zip)|*.zip|7z archives (*.7z)|*.7z",
             CheckFileExists = true,
             Multiselect = false
         };
@@ -464,7 +464,7 @@ public partial class MainWindow : Window
         }
 
         MessageBoxResult result = MessageBox.Show(this,
-            $"Uninstall {game.Name}?\n\nThis deletes its installed files but does not delete the original ZIP.",
+            $"Uninstall {game.Name}?\n\nThis deletes its installed files but does not delete the original archive.",
             "Uninstall game", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
 
         if (result != MessageBoxResult.Yes)
@@ -599,27 +599,29 @@ public partial class MainWindow : Window
 
     private void Window_DragOver(object sender, DragEventArgs e)
     {
-        e.Effects = GetDroppedZip(e.Data) is null ? DragDropEffects.None : DragDropEffects.Copy;
+        e.Effects = GetDroppedArchive(e.Data) is null ? DragDropEffects.None : DragDropEffects.Copy;
         e.Handled = true;
     }
 
     private void Window_Drop(object sender, DragEventArgs e)
     {
-        string? archivePath = GetDroppedZip(e.Data);
+        string? archivePath = GetDroppedArchive(e.Data);
         if (archivePath is not null)
         {
             _ = InstallArchiveAsync(archivePath);
         }
     }
 
-    private static string? GetDroppedZip(IDataObject data)
+    private static string? GetDroppedArchive(IDataObject data)
     {
         if (!data.GetDataPresent(DataFormats.FileDrop) || data.GetData(DataFormats.FileDrop) is not string[] files)
         {
             return null;
         }
 
-        return files.Length == 1 && string.Equals(Path.GetExtension(files[0]), ".zip", StringComparison.OrdinalIgnoreCase)
+        string extension = files.Length == 1 ? Path.GetExtension(files[0]) : string.Empty;
+        return string.Equals(extension, ".zip", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(extension, ".7z", StringComparison.OrdinalIgnoreCase)
             ? files[0]
             : null;
     }
